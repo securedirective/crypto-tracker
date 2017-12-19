@@ -1,42 +1,6 @@
 from peewee import *
-from playhouse.migrate import MySQLMigrator, migrate
 
-
-class DBWrapper(Proxy):
-    def migrate_initial(self, migrator):
-        migrate()
-
-    def migrate_pair_add_last_update(self, migrator):
-        migrate(
-            migrator.add_column(
-                'pair', 'last_update',
-                IntegerField(null=False, default=0))
-        )
-
-    def apply_all_migrations(self):
-        from .models import all_tables  # Late binding
-        self.create_tables(
-            all_tables,
-            safe=True)
-
-        applied_migrations = [x.name for x in DBMigration.select()]
-        for m in dir(self):
-            if m.startswith('migrate_'):
-                if m not in applied_migrations:
-                    print("Applying '%s'..." % m)
-                    with self.transaction():
-                        migrator = MySQLMigrator(self)
-                        getattr(self, m)(migrator)
-                    DBMigration.create(name=m)
-
-DB = DBWrapper()
-
-
-class DBMigration(Model):
-    class Meta:
-        database = DB
-
-    name = CharField(max_length=200, null=False, primary_key=True)
+DB = Proxy()
 
 
 class Currency(Model):
@@ -51,11 +15,17 @@ class Currency(Model):
 
     digits_after_decimal = IntegerField(null=False)
 
-    usd_per_large = IntegerField(null=True, default=None)
+    usd_per_large = FloatField(null=True)
 
-    value_url = CharField(max_length=500, null=True, default=None)
+    value_url = CharField(max_length=500, null=True)
 
-    notes = CharField(max_length=500, null=True, default=None)
+    notes = CharField(max_length=500, null=True)
+
+    info_block = CharField(max_length=500, null=True)
+
+    info_tx = CharField(max_length=500, null=True)
+
+    info_addr = CharField(max_length=500, null=True)
 
     def format_large(self, small_amount):
         fmt = "{} {:."+str(self.digits_after_decimal)+"f}"
@@ -78,13 +48,21 @@ class Wallet(Model):
         Currency,
         null=False, on_update='CASCADE')
 
-    location = CharField(max_length=50, null=True, default=None)
+    location = CharField(max_length=50, null=True)
 
-    protection = CharField(max_length=500, null=True, default=None)
+    paper_local = CharField(max_length=500, null=True)
 
-    notes = CharField(max_length=500, null=True, default=None)
+    paper_offsite_1 = CharField(max_length=500, null=True)
 
-    public_key = CharField(max_length=500, null=True, default=None)
+    paper_offsite_2 = CharField(max_length=500, null=True)
+
+    level_of_trust = CharField(max_length=500, null=True)
+
+    notes = CharField(max_length=500, null=True)
+
+    group = IntegerField(null=True)
+
+    public_key = CharField(max_length=500, null=True)
 
 
 class Transaction(Model):
@@ -96,15 +74,13 @@ class Transaction(Model):
     date_utc = DateTimeField(null=False)
 
     # trans_type
-    INCOME = 'INC'
-    TRANSFER = 'TRX'
-    EXCHANGE = 'EXC'
-    AIRDROP = 'AIR'
     trans_type_enum = {
-        INCOME: "Income",
-        TRANSFER: "Transfer",
-        EXCHANGE: "Exchange",
-        AIRDROP: "Airdrop",
+        "?": "Unknown",
+        "GFT": "Purchase",
+        "PUR": "Purchase",
+        "TRX": "Transfer",
+        "EXC": "Exchange",
+        "AIR": "Airdrop",
     }
     trans_type = FixedCharField(null=False, max_length=3)
 
@@ -126,7 +102,7 @@ class Transaction(Model):
     # to_wallet
     to_wallet = ForeignKeyField(
         Wallet, related_name='transaction_to',
-        null=False, on_update='CASCADE')
+        null=True, on_update='CASCADE')
 
     @property
     def to_wallet_str(self):
@@ -146,7 +122,7 @@ class Transaction(Model):
         return ""
 
     # from_amount
-    from_amount = BigIntegerField(null=True, default=None)
+    from_amount = BigIntegerField(null=True)
 
     @property
     def from_amount_str(self):
@@ -155,7 +131,7 @@ class Transaction(Model):
         return ""
 
     # to_amount
-    to_amount = BigIntegerField(null=False)
+    to_amount = BigIntegerField(null=True)
 
     @property
     def to_amount_str(self):
@@ -164,7 +140,7 @@ class Transaction(Model):
         return ""
 
     # fee_amount
-    fee_amount = BigIntegerField(null=True, default=None)
+    fee_amount = BigIntegerField(null=True)
 
     @property
     def fee_amount_str(self):
@@ -172,14 +148,14 @@ class Transaction(Model):
             return self.fee_wallet.currency.format_large(-self.fee_amount)
         return ""
 
+    # notes
+    notes = CharField(null=True, max_length=500)
+
     # from_txid
     from_txid = CharField(null=True, max_length=100)
 
     # to_txid
     to_txid = CharField(null=True, max_length=100)
-
-    # notes
-    notes = CharField(null=True, default=None, max_length=500)
 
 
 class Pair(Model):
@@ -222,5 +198,5 @@ class Price(Model):
 
 
 all_tables = [
-    DBMigration, Currency, Wallet, Transaction, Pair, Price
+    Currency, Wallet, Transaction, Pair, Price
 ]
