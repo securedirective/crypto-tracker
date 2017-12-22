@@ -3,6 +3,9 @@ from peewee import *
 DB = Proxy()
 
 
+class ValidationError(Exception):
+    pass
+
 class Currency(Model):
     class Meta:
         database = DB
@@ -69,24 +72,22 @@ class Transaction(Model):
     class Meta:
         database = DB
         db_table = 'trans'
+        constraints = [
+            Check('(from_wallet_id is null and from_amount is null) or (from_wallet_id is not null and from_amount < 0)'),
+            Check('(to_wallet_id is null and to_amount is null) or (to_wallet_id is not null and to_amount > 0)'),
+            Check('(fee_wallet_id is null and fee_amount is null) or (fee_wallet_id is not null and fee_amount < 0)'),
+        ]
 
     # date_utc
     date_utc = DateTimeField(null=False)
 
     # trans_type
-    trans_type_enum = {
-        "?": "Unknown",
-        "GFT": "Purchase",
-        "PUR": "Purchase",
-        "TRX": "Transfer",
-        "EXC": "Exchange",
-        "AIR": "Airdrop",
-    }
-    trans_type = FixedCharField(null=False, max_length=3)
+    TRANS_TYPES = ["Gift", "Income", "Airdrop", "Transfer", "Exchange"]
+    trans_type = IntegerField(null=False)
 
     @property
     def trans_type_str(self):
-        return Transaction.trans_type_enum[self.trans_type]
+        return Transaction.TRANS_TYPES[self.trans_type]
 
     # from_wallet
     from_wallet = ForeignKeyField(
@@ -157,6 +158,23 @@ class Transaction(Model):
     # to_txid
     to_txid = CharField(null=True, max_length=100)
 
+    # def validate_fields(self):
+    #     if self.trans_type < 0 or self.trans_type >= len(Transaction.TRANS_TYPES):
+    #         raise ValidationError("Unknown trans_type: %s" % self.trans_type)
+
+    # # Overload the function so we can validate fields
+    # def save(self, force_insert=False, only=None):
+        
+    # # Overload the function so we can validate fields
+    # def update(self, __data=None, **update):
+    #     self.validate_fields()
+    #     return super().update(__data, **update)
+
+    # # Overload the function so we can validate fields
+    # def insert(self, __data=None, **insert):
+    #     self.validate_fields()
+    #     return super().insert(__data, **insert)
+
 
 class Pair(Model):
     class Meta:
@@ -180,7 +198,9 @@ class Pair(Model):
 class Price(Model):
     class Meta:
         database = DB
-        primary_key = CompositeKey('pair', 'date')
+        constraints = [
+            SQL('UNIQUE (pair_id, date)'),
+        ]
 
     pair = ForeignKeyField(
         Pair,
@@ -197,6 +217,6 @@ class Price(Model):
     price_close = FloatField(null=False)
 
 
-all_tables = [
+ALL_TABLES = [
     Currency, Wallet, Transaction, Pair, Price
 ]

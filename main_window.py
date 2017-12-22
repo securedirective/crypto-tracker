@@ -1,18 +1,25 @@
+import os
 import sys
+import logging
 from peewee import MySQLDatabase, SqliteDatabase, prefetch
 
 from config import Config
-from cryptodb import *
+from database import *
 
 try:
     import wx
 except ImportError:
     raise ImportError("The wxPython module is required to run this program")
 
+DEBUG = True
+VERBOSE = False
+
 
 class MainForm(wx.Frame):
     EXTERIOR_GAP = 14
     GAP = 10
+
+    database_connected = False
 
     def __init__(self):
         super().__init__(None, -1, 'Crypto Tracker')
@@ -59,7 +66,12 @@ class MainForm(wx.Frame):
         sizer = wx.StaticBoxSizer(wx.VERTICAL, self, "Transactions:")
         sizer.Add(buttonrow, flag=wx.EXPAND)
         sizer.AddSpacer(self.GAP)
-        self.lst_transactions = wx.ListBox(self)
+        self.lst_transactions = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
+        self.lst_transactions.InsertColumn(0, 'Type', width=100)
+        self.lst_transactions.InsertColumn(1, 'Date', width=150)
+        self.lst_transactions.InsertColumn(2, 'From', width=200)
+        self.lst_transactions.InsertColumn(3, 'To', width=200)
+        self.lst_transactions.InsertColumn(4, 'Notes', width=300)
         self.lst_transactions.SetMinSize(wx.Size(-1, 200))
         sizer.Add(self.lst_transactions, proportion=1, flag=wx.EXPAND)
         return sizer
@@ -132,11 +144,14 @@ class MainForm(wx.Frame):
 
     def connect_to_database(self):
         self.update_status("Connecting to database...")
-        # Connect to database
+
         if Config.DB_TYPE == 'sqlite':
             DB.initialize(SqliteDatabase(
                 Config.DB_NAME
             ))
+            DB.create_tables(
+                ALL_TABLES,
+                safe=True)
         elif Config.DB_TYPE == 'mysql':
             DB.initialize(MySQLDatabase(
                 Config.DB_NAME,
@@ -146,7 +161,13 @@ class MainForm(wx.Frame):
             ))
         else:
             raise Exception("Invalid DB_TYPE")
-        DB.connect()
+        # DB.connect()
+
+        if False:
+            from starter_data import add_starter_data
+            add_starter_data()
+
+        self.database_connected = True
         self.ready_status()
 
     def update_transaction_list(self):
@@ -163,21 +184,27 @@ class MainForm(wx.Frame):
             Currency.select()
         ))
         for t in transactions:
-            self.lst_transactions.Append('{date!s:<19} | {trans_type:<8} | {from_wallet:<18}{from_amount:>16} | {to_wallet:<18}{to_amount:>16} | {notes}'.format(
-                date=t.date_utc, trans_type=t.trans_type_str,
-                notes=t.notes,
-                from_wallet=t.from_wallet_str,
-                from_amount=t.from_amount_str,
-                to_wallet=t.to_wallet_str,
-                to_amount=t.to_amount_str,
-                ))
-        # for t in tlist:
-            # pass
+            self.lst_transactions.Append((
+                t.trans_type_str,
+                t.date_utc,
+                t.from_wallet_str,
+                t.to_wallet_str,
+                t.notes,
+            ))
 
         self.ready_status()
 
 
 if __name__ == "__main__":
+    # Configure logging
+    for arg in sys.argv:
+        if arg.lower() == '-v':
+            VERBOSE = True
+    logging.basicConfig(
+        format='%(asctime)s %(levelname)s - %(message)s',
+        level=logging.DEBUG if VERBOSE else logging.WARNING
+    )
+
     app = wx.App()
     # app = wx.App(redirect=True)   # Error messages go to popup window
     form = MainForm()

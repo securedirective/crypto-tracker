@@ -1,2 +1,2 @@
 peewee==2.10.2
-krakenex==2.0.0
+wxPython==4.0.0b2
