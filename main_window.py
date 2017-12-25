@@ -25,7 +25,8 @@ class MainForm(wx.Frame):
         super().__init__(None, -1, 'Crypto Tracker')
 
         self.init_widgets()
-        self.Show(True)
+        self.Maximize()
+        self.Show()
 
         self.connect_to_database()
         self.update_transaction_list()
@@ -55,7 +56,7 @@ class MainForm(wx.Frame):
         buttonrow = wx.BoxSizer(wx.HORIZONTAL)
         self.lbl_transaction_count = wx.StaticText(self, label="# items")
         self.lbl_transaction_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(self.lbl_transaction_count, proportion=1, flag=wx.ALIGN_BOTTOM)   # Expand to fill remaining space
+        buttonrow.Add(self.lbl_transaction_count, proportion=1, border=5, flag=wx.ALIGN_BOTTOM|wx.LEFT)   # Expand to fill remaining space
         buttonrow.AddSpacer(self.GAP)
         buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
         buttonrow.AddSpacer(self.GAP)
@@ -67,11 +68,12 @@ class MainForm(wx.Frame):
         sizer.Add(buttonrow, flag=wx.EXPAND)
         sizer.AddSpacer(self.GAP)
         self.lst_transactions = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
-        self.lst_transactions.InsertColumn(0, 'Type', width=100)
-        self.lst_transactions.InsertColumn(1, 'Date', width=150)
-        self.lst_transactions.InsertColumn(2, 'From', width=200)
-        self.lst_transactions.InsertColumn(3, 'To', width=200)
-        self.lst_transactions.InsertColumn(4, 'Notes', width=300)
+        self.lst_transactions.InsertColumn(0, 'Date (utc)', width=150)
+        self.lst_transactions.InsertColumn(1, 'Date (local)', width=150)
+        self.lst_transactions.InsertColumn(2, 'Type', width=150)
+        self.lst_transactions.InsertColumn(3, 'Wallets involved', width=280)
+        self.lst_transactions.InsertColumn(4, 'Explanation of money movement', width=500)
+        self.lst_transactions.InsertColumn(5, 'Notes', width=500)
         self.lst_transactions.SetMinSize(wx.Size(-1, 200))
         sizer.Add(self.lst_transactions, proportion=1, flag=wx.EXPAND)
         return sizer
@@ -80,7 +82,7 @@ class MainForm(wx.Frame):
         buttonrow = wx.BoxSizer(wx.HORIZONTAL)
         self.lbl_wallet_count = wx.StaticText(self, label="# items")
         self.lbl_wallet_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(self.lbl_wallet_count, proportion=1, flag=wx.ALIGN_BOTTOM)   # Expand to fill remaining space
+        buttonrow.Add(self.lbl_wallet_count, proportion=1, border=5, flag=wx.ALIGN_BOTTOM|wx.LEFT)   # Expand to fill remaining space
         buttonrow.AddSpacer(self.GAP)
         buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
         buttonrow.AddSpacer(self.GAP)
@@ -100,7 +102,7 @@ class MainForm(wx.Frame):
         buttonrow = wx.BoxSizer(wx.HORIZONTAL)
         self.lbl_currency_count = wx.StaticText(self, label="# items")
         self.lbl_currency_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(self.lbl_currency_count, proportion=1, flag=wx.ALIGN_BOTTOM)   # Expand to fill remaining space
+        buttonrow.Add(self.lbl_currency_count, proportion=1, border=5, flag=wx.ALIGN_BOTTOM|wx.LEFT)   # Expand to fill remaining space
         buttonrow.AddSpacer(self.GAP)
         buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
         buttonrow.AddSpacer(self.GAP)
@@ -159,6 +161,9 @@ class MainForm(wx.Frame):
                 user=Config.DB_USER,
                 password=Config.DB_PASSWORD
             ))
+            DB.create_tables(
+                ALL_TABLES,
+                safe=True)
         else:
             raise Exception("Invalid DB_TYPE")
         # DB.connect()
@@ -173,8 +178,14 @@ class MainForm(wx.Frame):
     def update_transaction_list(self):
         self.update_status("Updating transactions...")
 
+        # Hard-coded colors for various transaction types
+        CLR_EXCHANGE = wx.Colour(255, 255, 206)     # Yellow
+        CLR_INCOME = wx.Colour(198, 255, 198)       # Green
+        CLR_EXPENSE = wx.Colour(255, 214, 193)      # Red
+
+        # Query the database
         transactions = prefetch((
-            Transaction.select()
+            Transaction.select().order_by(Transaction.date.asc())
             # Transaction.select(Transaction, Wallet)
             # .join(Wallet)
             # .order_by(Transaction.date_utc)
@@ -183,14 +194,62 @@ class MainForm(wx.Frame):
         ), (
             Currency.select()
         ))
+
+        # Initialize the listbox
+        self.lst_transactions.DeleteAllItems()
+        new_index = None
+        item_count = 0
+
         for t in transactions:
-            self.lst_transactions.Append((
-                t.trans_type_str,
+            # Show error in notes field if a transaction doesn't validate
+            try:
+                t.validate_fields()
+                notes = t.notes
+            except ValidationError as e:
+                notes = "EXCEPTION: " + str(e)
+
+            # The Wallet/Money columns are customized for the transaction type
+            if t.trans_type == Transaction.TRANSFER:
+                wallet_explanation = "%s --> %s" % (t.from_wallet_str, t.to_wallet_str)
+                money_explanation = "Moved %s, with %s fee" % (t.from_amount_str, t.fee_amount_str)
+                clr = None
+            elif t.trans_type == Transaction.EXCHANGE:
+                wallet_explanation = "%s --> %s" % (t.from_wallet_str, t.to_wallet_str)
+                money_explanation = "Exchanged %s for %s, with %s fee" % (t.from_amount_str, t.to_amount_str, t.fee_amount_str)
+                clr = CLR_EXCHANGE
+            elif t.trans_type.startswith("INC-"):
+                wallet_explanation = t.to_wallet_str
+                money_explanation = t.to_amount_str
+                clr = CLR_INCOME
+            elif t.trans_type.startswith("EXP-"):
+                wallet_explanation = t.from_wallet_str
+                money_explanation = t.from_amount_str
+                clr = CLR_EXPENSE
+            else:
+                wallet_explanation = "?"
+                money_explanation = "?"
+                clr = None
+
+            # Add the item to the listbox
+            new_index = self.lst_transactions.Append((
                 t.date_utc,
-                t.from_wallet_str,
-                t.to_wallet_str,
-                t.notes,
+                t.date_local,
+                t.trans_type,
+                wallet_explanation,
+                money_explanation,
+                notes,
             ))
+            if clr:
+                self.lst_transactions.SetItemBackgroundColour(new_index, clr)
+
+            item_count += 1
+
+        # Scroll to the bottom
+        if new_index:
+            self.lst_transactions.EnsureVisible(new_index)
+
+        # Update the label
+        self.lbl_transaction_count.SetLabel("%s transactions" % item_count)
 
         self.ready_status()
 

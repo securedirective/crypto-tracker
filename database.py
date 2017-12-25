@@ -1,10 +1,15 @@
 from peewee import *
+from datetime import datetime
+import pytz
 
 DB = Proxy()
+
+local_time_zone = pytz.timezone("America/New_York")
 
 
 class ValidationError(Exception):
     pass
+
 
 class Currency(Model):
     class Meta:
@@ -41,6 +46,15 @@ class Currency(Model):
         # -2460000 sat
 
 
+class WalletGroup(Model):
+    class Meta:
+        database = DB
+
+    name = CharField(max_length=50, null=False)
+
+    notes = CharField(max_length=500, null=True)
+
+
 class Wallet(Model):
     class Meta:
         database = DB
@@ -63,7 +77,9 @@ class Wallet(Model):
 
     notes = CharField(max_length=500, null=True)
 
-    group = IntegerField(null=True)
+    wallet_group = ForeignKeyField(
+        WalletGroup,
+        null=False, on_update='CASCADE')
 
     public_key = CharField(max_length=500, null=True)
 
@@ -73,21 +89,35 @@ class Transaction(Model):
         database = DB
         db_table = 'trans'
         constraints = [
+            # Database constraints will ensure that every wallet reference is accompanied by an amount
+            # It also verifies the +/- of the amount column
             Check('(from_wallet_id is null and from_amount is null) or (from_wallet_id is not null and from_amount < 0)'),
             Check('(to_wallet_id is null and to_amount is null) or (to_wallet_id is not null and to_amount > 0)'),
             Check('(fee_wallet_id is null and fee_amount is null) or (fee_wallet_id is not null and fee_amount < 0)'),
         ]
 
-    # date_utc
-    date_utc = DateTimeField(null=False)
-
-    # trans_type
-    TRANS_TYPES = ["Gift", "Income", "Airdrop", "Transfer", "Exchange"]
-    trans_type = IntegerField(null=False)
+    # date (stored as UTC)
+    date = DateTimeField(null=False)
 
     @property
-    def trans_type_str(self):
-        return Transaction.TRANS_TYPES[self.trans_type]
+    def date_utc(self):
+        return self.date.replace(tzinfo=pytz.utc)
+
+    @property
+    def date_local(self):
+        return self.date_utc.astimezone(local_time_zone)
+
+    # trans_type
+    trans_type = CharField(null=False, max_length=100)
+    TRANSFER = "Transfer"
+    EXCHANGE = "Exchange"
+    INC_MINING = "INC-Mining"
+    INC_AIRDROP = "INC-Airdrop/Fork"
+    INC_GIFT = "INC-Gift"
+    EXP_PURCHASE = "EXP-Purchase"
+    EXP_GIFT = "EXP-Gift"
+    must_have_from_and_to = [TRANSFER, EXCHANGE]
+    may_not_have_fee = [INC_MINING, INC_AIRDROP, INC_GIFT]
 
     # from_wallet
     from_wallet = ForeignKeyField(
@@ -137,7 +167,7 @@ class Transaction(Model):
     @property
     def to_amount_str(self):
         if self.to_wallet:
-            return self.to_wallet.currency.format_large(-self.to_amount)
+            return self.to_wallet.currency.format_large(self.to_amount)
         return ""
 
     # fee_amount
@@ -158,13 +188,21 @@ class Transaction(Model):
     # to_txid
     to_txid = CharField(null=True, max_length=100)
 
-    # def validate_fields(self):
-    #     if self.trans_type < 0 or self.trans_type >= len(Transaction.TRANS_TYPES):
-    #         raise ValidationError("Unknown trans_type: %s" % self.trans_type)
+    # Must call this manually, since PeeWee doesn't support field validation
+    def validate_fields(self):
+        if self.trans_type in Transaction.must_have_from_and_to:
+            if self.from_wallet is None or self.to_wallet is None:
+                raise ValidationError("Transaction type %s must have both a from and a to wallet")
+        else:
+            if self.from_wallet is not None and self.to_wallet is not None:
+                raise ValidationError("Transaction type %s may not have both a from and a to wallet")
+        if self.trans_type in Transaction.may_not_have_fee:
+            if self.fee_wallet is not None:
+                raise ValidationError("Transaction type %s may not have a fee specified")
 
     # # Overload the function so we can validate fields
     # def save(self, force_insert=False, only=None):
-        
+
     # # Overload the function so we can validate fields
     # def update(self, __data=None, **update):
     #     self.validate_fields()
@@ -218,5 +256,5 @@ class Price(Model):
 
 
 ALL_TABLES = [
-    Currency, Wallet, Transaction, Pair, Price
+    Currency, WalletGroup, Wallet, Transaction, Pair, Price
 ]

@@ -1,2 +1,4 @@
+PyMySQL==0.7.9
 peewee==2.10.2
 wxPython==4.0.0b2
+krakenex==2.0.0

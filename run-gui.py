@@ -135,6 +135,5 @@ if __name__ == "__main__":
     # # DB.apply_all_migrations()
 
     # Start main form
-    from forms.main import MainForm
-    form = MainForm()
-    form.mainloop()
+    from gui.main_window import start_main_loop
+    start_main_loop()
