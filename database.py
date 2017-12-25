@@ -36,8 +36,8 @@ class Currency(Model):
     info_addr = CharField(max_length=500, null=True)
 
     def format_large(self, small_amount):
-        fmt = "{} {:."+str(self.digits_after_decimal)+"f}"
-        return fmt.format(self.unit_large, small_amount/(10**self.digits_after_decimal))
+        fmt = "{} {:." + str(self.digits_after_decimal) + "f}"
+        return fmt.format(self.unit_large, small_amount / (10**self.digits_after_decimal))
         # dsh -0.02460000
 
     def format_small(self, small_amount):

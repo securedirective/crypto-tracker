@@ -35,7 +35,9 @@ class MainForm(wx.Frame):
 
     def init_widgets(self):
         mainsizer = wx.GridBagSizer(vgap=self.GAP, hgap=self.GAP)
-        mainsizer.Add(self.init_transaction_panel(), pos=(0, 0), span=(1, 2), flag=wx.EXPAND)   # , flag=wx.SizerFlags().Expand())
+        mainsizer.Add(
+            self.init_transaction_panel(), pos=(0, 0), span=(1, 2),
+            flag=wx.EXPAND)   # , flag=wx.SizerFlags().Expand())
         mainsizer.Add(self.init_wallet_panel(), pos=(1, 0), flag=wx.EXPAND)
         mainsizer.Add(self.init_currency_panel(), pos=(1, 1), flag=wx.EXPAND)
         mainsizer.AddGrowableRow(0)
@@ -44,7 +46,9 @@ class MainForm(wx.Frame):
         mainsizer.AddGrowableCol(1)
 
         perimeter = wx.BoxSizer(wx.VERTICAL)  # This one is to have a border
-        perimeter.Add(mainsizer, proportion=1, flag=wx.EXPAND | wx.ALL, border=self.EXTERIOR_GAP)
+        perimeter.Add(
+            mainsizer, proportion=1, border=self.EXTERIOR_GAP,
+            flag=wx.EXPAND | wx.ALL)
 
         self.SetIcon(wx.Icon('app.png', wx.BITMAP_TYPE_PNG, 32, 32))
         self.SetBackgroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_FRAMEBK))
@@ -56,7 +60,9 @@ class MainForm(wx.Frame):
         buttonrow = wx.BoxSizer(wx.HORIZONTAL)
         self.lbl_transaction_count = wx.StaticText(self, label="# items")
         self.lbl_transaction_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(self.lbl_transaction_count, proportion=1, border=5, flag=wx.ALIGN_BOTTOM|wx.LEFT)   # Expand to fill remaining space
+        buttonrow.Add(
+            self.lbl_transaction_count, proportion=1, border=5,
+            flag=wx.ALIGN_BOTTOM | wx.LEFT)   # Expand to fill remaining space
         buttonrow.AddSpacer(self.GAP)
         buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
         buttonrow.AddSpacer(self.GAP)
@@ -67,7 +73,9 @@ class MainForm(wx.Frame):
         sizer = wx.StaticBoxSizer(wx.VERTICAL, self, "Transactions:")
         sizer.Add(buttonrow, flag=wx.EXPAND)
         sizer.AddSpacer(self.GAP)
-        self.lst_transactions = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
+        self.lst_transactions = wx.ListCtrl(
+            self,
+            style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
         self.lst_transactions.InsertColumn(0, 'Date (utc)', width=150)
         self.lst_transactions.InsertColumn(1, 'Date (local)', width=150)
         self.lst_transactions.InsertColumn(2, 'Type', width=150)
@@ -82,7 +90,9 @@ class MainForm(wx.Frame):
         buttonrow = wx.BoxSizer(wx.HORIZONTAL)
         self.lbl_wallet_count = wx.StaticText(self, label="# items")
         self.lbl_wallet_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(self.lbl_wallet_count, proportion=1, border=5, flag=wx.ALIGN_BOTTOM|wx.LEFT)   # Expand to fill remaining space
+        buttonrow.Add(
+            self.lbl_wallet_count, proportion=1, border=5,
+            flag=wx.ALIGN_BOTTOM | wx.LEFT)   # Expand to fill remaining space
         buttonrow.AddSpacer(self.GAP)
         buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
         buttonrow.AddSpacer(self.GAP)
@@ -102,7 +112,9 @@ class MainForm(wx.Frame):
         buttonrow = wx.BoxSizer(wx.HORIZONTAL)
         self.lbl_currency_count = wx.StaticText(self, label="# items")
         self.lbl_currency_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(self.lbl_currency_count, proportion=1, border=5, flag=wx.ALIGN_BOTTOM|wx.LEFT)   # Expand to fill remaining space
+        buttonrow.Add(
+            self.lbl_currency_count, proportion=1, border=5,
+            flag=wx.ALIGN_BOTTOM | wx.LEFT)   # Expand to fill remaining space
         buttonrow.AddSpacer(self.GAP)
         buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
         buttonrow.AddSpacer(self.GAP)
@@ -183,7 +195,7 @@ class MainForm(wx.Frame):
         CLR_INCOME = wx.Colour(198, 255, 198)       # Green
         CLR_EXPENSE = wx.Colour(255, 214, 193)      # Red
 
-        # Query the database
+        # Query the database (come back to this later to make the queries more efficient)
         transactions = prefetch((
             Transaction.select().order_by(Transaction.date.asc())
             # Transaction.select(Transaction, Wallet)
@@ -210,12 +222,16 @@ class MainForm(wx.Frame):
 
             # The Wallet/Money columns are customized for the transaction type
             if t.trans_type == Transaction.TRANSFER:
-                wallet_explanation = "%s --> %s" % (t.from_wallet_str, t.to_wallet_str)
-                money_explanation = "Moved %s, with %s fee" % (t.from_amount_str, t.fee_amount_str)
+                wallet_explanation = "%s --> %s" % \
+                    (t.from_wallet_str, t.to_wallet_str)
+                money_explanation = "Moved %s, with %s fee" % \
+                    (t.from_amount_str, t.fee_amount_str)
                 clr = None
             elif t.trans_type == Transaction.EXCHANGE:
-                wallet_explanation = "%s --> %s" % (t.from_wallet_str, t.to_wallet_str)
-                money_explanation = "Exchanged %s for %s, with %s fee" % (t.from_amount_str, t.to_amount_str, t.fee_amount_str)
+                wallet_explanation = "%s --> %s" % \
+                    (t.from_wallet_str, t.to_wallet_str)
+                money_explanation = "Exchanged %s for %s, with %s fee" % \
+                    (t.from_amount_str, t.to_amount_str, t.fee_amount_str)
                 clr = CLR_EXCHANGE
             elif t.trans_type.startswith("INC-"):
                 wallet_explanation = t.to_wallet_str
