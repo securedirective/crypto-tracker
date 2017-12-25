@@ -1,3 +1,4 @@
+-- create or replace view balances_by_currency as
 select * from (
 	select
 	    currency.name as currency
