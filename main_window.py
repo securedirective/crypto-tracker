@@ -1,15 +1,18 @@
+# Built-ins
 import os
 import sys
 import logging
-from peewee import MySQLDatabase, SqliteDatabase, prefetch
-
-from config import Config
-from database import *
-
 try:
     import wx
 except ImportError:
     raise ImportError("The wxPython module is required to run this program")
+
+# Extra packages
+from peewee import MySQLDatabase, SqliteDatabase, prefetch
+
+# Our stuff
+from config import Config
+from database import *
 
 DEBUG = True
 VERBOSE = False
