@@ -22,17 +22,47 @@ class MainForm(wx.Frame):
     EXTERIOR_GAP = 14
     GAP = 10
 
-    database_connected = False
-
     def __init__(self):
         super().__init__(None, -1, 'Crypto Tracker')
 
+        self.database_connected = False
+        self.sub_windows = []
+
         self.init_widgets()
+        self.Bind(wx.EVT_CLOSE, self.on_close)
         self.Maximize()
         self.Show()
 
         self.connect_to_database()
         self.update_transaction_list()
+
+    def on_close(self, event):
+        can_veto = event.CanVeto()
+        visible_windows = 0
+        asked = False
+        quit_anyway = False
+
+        for w in self.sub_windows:
+            try:
+                if w.IsShown() and can_veto:
+                    if not asked:
+                        quit_anyway = (wx.MessageBox("You still have sub-windows open. Quit anyway?", "Quit",
+                                       wx.ICON_QUESTION | wx.YES_NO) == wx.YES)
+                        asked = True
+                    if quit_anyway:
+                        w.Destroy()
+                else:
+                    w.Destroy()
+            except Exception as e:
+                print(e)
+                sys.stdout.flush()
+
+        if asked and not quit_anyway:
+            event.Veto()
+            return
+
+        self.Destroy()
+        print("Called Destroy()")
 
     # ======================================================================= #
 
@@ -271,6 +301,15 @@ class MainForm(wx.Frame):
         self.lbl_transaction_count.SetLabel("%s transactions" % item_count)
 
         self.ready_status()
+
+    def show_sub_window(self, window, modal=True):
+        self.sub_windows.append(window)
+        if modal:
+            window.ShowModal()
+            window.Destroy()
+            self.sub_windows.remove(window)
+        else:
+            window.Show(True)
 
 
 if __name__ == "__main__":
