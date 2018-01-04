@@ -1,7 +1,7 @@
 -- create or replace view transactions_explained as
 select
 	trans.id,
-	date_utc,
+	date,
 	trans_type,
 	from_wallet.name as from_wallet,
 	to_wallet.name as to_wallet,
@@ -19,4 +19,4 @@ left join wallet to_wallet on to_wallet_id = to_wallet.id
 left join currency to_currency on to_wallet.currency_id = to_currency.id
 left join wallet fee_wallet on fee_wallet_id = fee_wallet.id
 left join currency fee_currency on fee_wallet.currency_id = fee_currency.id
-order by date_utc
+order by date

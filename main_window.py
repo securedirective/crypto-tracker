@@ -14,11 +14,15 @@ from peewee import MySQLDatabase, SqliteDatabase, prefetch
 from config import Config
 from database import *
 
-DEBUG = True
-VERBOSE = False
+DEBUG = False
 
 
-class MainForm(wx.Frame):
+def print_flush(s):
+    print(s)
+    sys.stdout.flush()
+
+
+class MainWindow(wx.Frame):
     EXTERIOR_GAP = 14
     GAP = 10
 
@@ -34,7 +38,9 @@ class MainForm(wx.Frame):
         self.Show()
 
         self.connect_to_database()
-        self.update_transaction_list()
+        self.populate_transaction_list()
+        self.populate_wallet_list()
+        self.populate_currency_list()
 
     def on_close(self, event):
         can_veto = event.CanVeto()
@@ -54,15 +60,16 @@ class MainForm(wx.Frame):
                 else:
                     w.Destroy()
             except Exception as e:
-                print(e)
-                sys.stdout.flush()
+                if DEBUG:
+                    print_flush(e)
 
         if asked and not quit_anyway:
             event.Veto()
             return
 
         self.Destroy()
-        print("Called Destroy()")
+        if DEBUG:
+            print("Called Destroy()")
 
     # ======================================================================= #
 
@@ -97,7 +104,9 @@ class MainForm(wx.Frame):
             self.lbl_transaction_count, proportion=1, border=5,
             flag=wx.ALIGN_BOTTOM | wx.LEFT)   # Expand to fill remaining space
         buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
+        b = wx.Button(self, label="Add")
+        b.Bind(wx.EVT_BUTTON, self.add_transaction)
+        buttonrow.Add(b, flag=wx.EXPAND)
         buttonrow.AddSpacer(self.GAP)
         buttonrow.Add(wx.Button(self, label="Edit"), flag=wx.EXPAND)
         buttonrow.AddSpacer(self.GAP)
@@ -182,8 +191,8 @@ class MainForm(wx.Frame):
     # ======================================================================= #
 
     def update_status(self, status):
-        print(status)
-        sys.stdout.flush()
+        if DEBUG:
+            print_flush(status)
         self.status_bar.SetStatusText(status, 0)
 
     def ready_status(self):
@@ -206,9 +215,9 @@ class MainForm(wx.Frame):
                 user=Config.DB_USER,
                 password=Config.DB_PASSWORD
             ))
-            DB.create_tables(
-                ALL_TABLES,
-                safe=True)
+            # DB.create_tables(
+            #     ALL_TABLES,
+            #     safe=True)
         else:
             raise Exception("Invalid DB_TYPE")
         # DB.connect()
@@ -220,25 +229,25 @@ class MainForm(wx.Frame):
         self.database_connected = True
         self.ready_status()
 
-    def update_transaction_list(self):
+    def populate_transaction_list(self):
         self.update_status("Updating transactions...")
 
         # Hard-coded colors for various transaction types
         CLR_EXCHANGE = wx.Colour(255, 255, 206)     # Yellow
         CLR_INCOME = wx.Colour(198, 255, 198)       # Green
         CLR_EXPENSE = wx.Colour(255, 214, 193)      # Red
+        CLR_ERROR = wx.Colour(255, 0, 0)        # Bright red
 
         # Query the database (come back to this later to make the queries more efficient)
-        transactions = prefetch((
-            Transaction.select().order_by(Transaction.date.asc())
-            # Transaction.select(Transaction, Wallet)
-            # .join(Wallet)
-            # .order_by(Transaction.date_utc)
-        ), (
-            Wallet.select()
-        ), (
-            Currency.select()
-        ))
+        transactions = prefetch(
+            # Main table to load:
+            Transaction.select().order_by(Transaction.date),
+            # Additional tables to prefetch:
+            Wallet.select(),
+            Currency.select(),
+            DeterministicSeed.select(),
+            Identity.select()
+        )
 
         # Initialize the listbox
         self.lst_transactions.DeleteAllItems()
@@ -247,37 +256,34 @@ class MainForm(wx.Frame):
 
         for t in transactions:
             # Show error in notes field if a transaction doesn't validate
+            clr = None
+            wallet_explanation = "?"
+            money_explanation = "?"
+
             try:
                 t.validate_fields()
-                notes = t.notes
-            except ValidationError as e:
-                notes = "EXCEPTION: " + str(e)
+                notes = t.notes or ""
 
-            # The Wallet/Money columns are customized for the transaction type
-            if t.trans_type == Transaction.TRANSFER:
-                wallet_explanation = "%s --> %s" % \
-                    (t.from_wallet_str, t.to_wallet_str)
-                money_explanation = "Moved %s, with %s fee" % \
-                    (t.from_amount_str, t.fee_amount_str)
-                clr = None
-            elif t.trans_type == Transaction.EXCHANGE:
-                wallet_explanation = "%s --> %s" % \
-                    (t.from_wallet_str, t.to_wallet_str)
-                money_explanation = "Exchanged %s for %s, with %s fee" % \
-                    (t.from_amount_str, t.to_amount_str, t.fee_amount_str)
-                clr = CLR_EXCHANGE
-            elif t.trans_type.startswith("INC-"):
-                wallet_explanation = t.to_wallet_str
-                money_explanation = t.to_amount_str
-                clr = CLR_INCOME
-            elif t.trans_type.startswith("EXP-"):
-                wallet_explanation = t.from_wallet_str
-                money_explanation = t.from_amount_str
-                clr = CLR_EXPENSE
-            else:
-                wallet_explanation = "?"
-                money_explanation = "?"
-                clr = None
+                # The Wallet/Money columns are customized for the transaction type
+                if t.trans_type == Transaction.TRANSFER:
+                    wallet_explanation = t.from_wallet.str_short() + " --> " + t.to_wallet.str_short()
+                    money_explanation = "Moved " + t.from_amount_str + ", with " + t.fee_amount_str + " fee"
+                elif t.trans_type == Transaction.EXCHANGE:
+                    clr = CLR_EXCHANGE
+                    wallet_explanation = t.from_wallet.str_short() + " --> " + t.to_wallet.str_short()
+                    money_explanation = "Exchanged " + t.from_amount_str + " for " + t.to_amount_str + ", with " + t.fee_amount_str + " fee"
+                elif t.trans_type.startswith("INC-"):
+                    clr = CLR_INCOME
+                    wallet_explanation = t.to_wallet.str_short()
+                    money_explanation = "Income of " + t.to_amount_str
+                elif t.trans_type.startswith("EXP-"):
+                    clr = CLR_EXPENSE
+                    wallet_explanation = t.from_wallet.str_short()
+                    money_explanation = "Expense of " + t.from_amount_str
+
+            except Exception as e:
+                notes = "EXCEPTION: " + str(e)
+                clr = CLR_ERROR
 
             # Add the item to the listbox
             new_index = self.lst_transactions.Append((
@@ -302,6 +308,18 @@ class MainForm(wx.Frame):
 
         self.ready_status()
 
+    def populate_wallet_list(self):
+        pass
+
+    def populate_currency_list(self):
+        pass
+
+    def add_transaction(self, event):
+        self.update_status("Button clicked")
+        from edit_transaction_window import EditTransactionWindow
+        self.show_sub_window(EditTransactionWindow(parent=self), False)
+        self.ready_status()
+
     def show_sub_window(self, window, modal=True):
         self.sub_windows.append(window)
         if modal:
@@ -316,13 +334,13 @@ if __name__ == "__main__":
     # Configure logging
     for arg in sys.argv:
         if arg.lower() == '-v':
-            VERBOSE = True
+            DEBUG = True
     logging.basicConfig(
         format='%(asctime)s %(levelname)s - %(message)s',
-        level=logging.DEBUG if VERBOSE else logging.WARNING
+        level=logging.DEBUG if DEBUG else logging.WARNING
     )
 
     app = wx.App()
     # app = wx.App(redirect=True)   # Error messages go to popup window
-    form = MainForm()
+    form = MainWindow()
     app.MainLoop()

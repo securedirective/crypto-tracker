@@ -1,13 +1,12 @@
 -- create or replace view balances_by_wallet as
 select * from (
 	select
-	    currency.name as currency
-	    ,wallet.id as id
-	    ,wallet.name as wallet
+	    wallet.id as id
+	    ,wallet.old_name as wallet
+	    ,currency.name as currency
 	    ,sum(combined.amount) as balance_small
 		,sum(combined.amount)/power(10,currency.digits_after_decimal) as balance_large
-		,ROUND((sum(combined.amount)/power(10,currency.digits_after_decimal))*currency.usd_per_large,2) AS value_usd
-		,wallet.level_of_trust
+		,ROUND((sum(combined.amount)/power(10,currency.digits_after_decimal))*currency.usd_per_large,0) AS value_usd
 	from (
 		select from_wallet_id as wallet_id, from_amount as amount
 			from trans
@@ -24,7 +23,6 @@ select * from (
 	left join wallet on combined.wallet_id = wallet.id
 	left join currency on wallet.currency_id = currency.id
 	group by wallet.id
-	order by currency, wallet
 ) as a
 where balance_small != 0
 order by value_usd desc;

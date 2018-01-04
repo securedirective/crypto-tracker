@@ -17,6 +17,8 @@ class Currency(Model):
 
     name = CharField(max_length=50, null=False)
 
+    derivation_path = CharField(max_length=100, null=True)
+
     unit_large = CharField(max_length=20, null=False)
 
     unit_small = CharField(max_length=20, null=False)
@@ -25,15 +27,19 @@ class Currency(Model):
 
     usd_per_large = FloatField(null=True)
 
-    value_url = CharField(max_length=500, null=True)
-
     notes = CharField(max_length=500, null=True)
 
-    info_block = CharField(max_length=500, null=True)
+    url_public_website = CharField(max_length=500, null=True)
 
-    info_tx = CharField(max_length=500, null=True)
+    url_source_code = CharField(max_length=500, null=True)
 
-    info_addr = CharField(max_length=500, null=True)
+    url_market_value = CharField(max_length=500, null=True)
+
+    url_block_info = CharField(max_length=500, null=True)
+
+    url_tx_info = CharField(max_length=500, null=True)
+
+    url_addr_info = CharField(max_length=500, null=True)
 
     def format_large(self, small_amount):
         fmt = "{} {:." + str(self.digits_after_decimal) + "f}"
@@ -45,27 +51,29 @@ class Currency(Model):
         return fmt.format(small_amount, self.unit_small)
         # -2460000 sat
 
+    def __str__(self):
+        return "Currency #%s" % self.id
 
-class WalletGroup(Model):
+
+class Identity(Model):
     class Meta:
         database = DB
+        db_table = 'ident'
 
     name = CharField(max_length=50, null=False)
 
     notes = CharField(max_length=500, null=True)
 
+    def __str__(self):
+        return "Ident #%s" % self.id
 
-class Wallet(Model):
+
+class DeterministicSeed(Model):
     class Meta:
         database = DB
+        db_table = 'seed'
 
     name = CharField(max_length=50, null=False)
-
-    currency = ForeignKeyField(
-        Currency,
-        null=False, on_update='CASCADE')
-
-    location = CharField(max_length=50, null=True)
 
     paper_local = CharField(max_length=500, null=True)
 
@@ -77,11 +85,42 @@ class Wallet(Model):
 
     notes = CharField(max_length=500, null=True)
 
-    wallet_group = ForeignKeyField(
-        WalletGroup,
+    identity = ForeignKeyField(
+        Identity,
         null=False, on_update='CASCADE')
 
+    def __str__(self):
+        return "Seed #%s" % self.id
+
+
+class Wallet(Model):
+    class Meta:
+        database = DB
+        db_table = 'wallet'
+
+    seed = ForeignKeyField(
+        DeterministicSeed,
+        null=False, on_update='CASCADE')
+
+    currency = ForeignKeyField(
+        Currency,
+        null=False, on_update='CASCADE')
+
+    passphrase = IntegerField(null=True)
+
     public_key = CharField(max_length=500, null=True)
+
+    def __str__(self):
+        return "Wallet #%s" % self.id
+
+    def str_short(self):
+        return "#%s(%s)" % (self.id, self.currency.unit_large)
+
+    def str_long(self):
+        t = "%s > %s > %s (%s)" % (self.identity.name, self.seed.name, self.currency.unit_large, self.currency.name)
+        if self.passphrase:
+            t += (" > Pw%s" % self.passphrase)
+        return t
 
 
 class Transaction(Model):
@@ -118,6 +157,7 @@ class Transaction(Model):
     EXP_GIFT = "EXP-Gift"
     must_have_from_and_to = [TRANSFER, EXCHANGE]
     may_not_have_fee = [INC_MINING, INC_AIRDROP, INC_GIFT]
+    all_trans_types = [TRANSFER, EXCHANGE, INC_MINING, INC_AIRDROP, INC_GIFT, EXP_PURCHASE, EXP_GIFT]
 
     # from_wallet
     from_wallet = ForeignKeyField(
@@ -127,7 +167,7 @@ class Transaction(Model):
     @property
     def from_wallet_str(self):
         if self.from_wallet:
-            return self.from_wallet.name
+            return self.from_wallet.str_short()
         return ""
 
     # to_wallet
@@ -138,7 +178,7 @@ class Transaction(Model):
     @property
     def to_wallet_str(self):
         if self.to_wallet:
-            return self.to_wallet.name
+            return self.to_wallet.str_short()
         return ""
 
     # fee_wallet
@@ -149,7 +189,7 @@ class Transaction(Model):
     @property
     def fee_wallet_str(self):
         if self.fee_wallet:
-            return self.fee_wallet.name
+            return self.fee_wallet.str_short()
         return ""
 
     # from_amount
@@ -213,10 +253,14 @@ class Transaction(Model):
     #     self.validate_fields()
     #     return super().insert(__data, **insert)
 
+    def __str__(self):
+        return "Tx #%s" % self.id
+
 
 class Pair(Model):
     class Meta:
         database = DB
+        db_table = 'pair'
 
     name = CharField(max_length=200, null=False)
 
@@ -232,10 +276,14 @@ class Pair(Model):
 
     last_update = DateTimeField(null=False)
 
+    def __str__(self):
+        return "Pair #%s" % self.id
+
 
 class Price(Model):
     class Meta:
         database = DB
+        db_table = 'price'
         constraints = [
             SQL('UNIQUE (pair_id, date)'),
         ]
@@ -254,7 +302,10 @@ class Price(Model):
 
     price_close = FloatField(null=False)
 
+    def __str__(self):
+        return "Price #%s" % self.id
+
 
 ALL_TABLES = [
-    Currency, WalletGroup, Wallet, Transaction, Pair, Price
+    Currency, DeterministicSeed, Identity, Wallet, Transaction, Pair, Price
 ]
