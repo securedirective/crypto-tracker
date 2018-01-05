@@ -4,3 +4,4 @@
 config.py
 *temp*
 .DS_Store
+*.bak

@@ -1,25 +1,13 @@
 # Built-ins
-import os
-import sys
-import logging
-try:
-    import wx
-except ImportError:
-    raise ImportError("The wxPython module is required to run this program")
+import wx
 
 # Extra packages
 from peewee import MySQLDatabase, SqliteDatabase, prefetch
 
 # Our stuff
 from config import Config
+from common import *
 from database import *
-
-DEBUG = False
-
-
-def print_flush(s):
-    print(s)
-    sys.stdout.flush()
 
 
 class MainWindow(wx.Frame):
@@ -32,15 +20,19 @@ class MainWindow(wx.Frame):
         self.database_connected = False
         self.sub_windows = []
 
-        self.init_widgets()
-        self.Bind(wx.EVT_CLOSE, self.on_close)
-        self.Maximize()
-        self.Show()
+        self.init_gui()
 
         self.connect_to_database()
         self.populate_transaction_list()
         self.populate_wallet_list()
         self.populate_currency_list()
+
+        # self.Maximize()
+        self.SetSize(1950, 50, 1850, 1000)
+        self.lst_transactions.SetFocus()
+        self.Show()
+
+        # self.add_transaction()
 
     def on_close(self, event):
         can_veto = event.CanVeto()
@@ -53,14 +45,14 @@ class MainWindow(wx.Frame):
                 if w.IsShown() and can_veto:
                     if not asked:
                         quit_anyway = (wx.MessageBox("You still have sub-windows open. Quit anyway?", "Quit",
-                                       wx.ICON_QUESTION | wx.YES_NO) == wx.YES)
+                                       wx.ICON_QUESTION | wx.YES_NO | wx.CENTRE) == wx.YES)
                         asked = True
                     if quit_anyway:
                         w.Destroy()
                 else:
                     w.Destroy()
             except Exception as e:
-                if DEBUG:
+                if Config.DEBUG:
                     print_flush(e)
 
         if asked and not quit_anyway:
@@ -68,130 +60,117 @@ class MainWindow(wx.Frame):
             return
 
         self.Destroy()
-        if DEBUG:
+        if Config.DEBUG:
             print("Called Destroy()")
 
     # ======================================================================= #
 
-    def init_widgets(self):
-        mainsizer = wx.GridBagSizer(vgap=self.GAP, hgap=self.GAP)
-        mainsizer.Add(
-            self.init_transaction_panel(), pos=(0, 0), span=(1, 2),
-            flag=wx.EXPAND)   # , flag=wx.SizerFlags().Expand())
-        mainsizer.Add(self.init_wallet_panel(), pos=(1, 0), flag=wx.EXPAND)
-        mainsizer.Add(self.init_currency_panel(), pos=(1, 1), flag=wx.EXPAND)
-        mainsizer.AddGrowableRow(0)
-        mainsizer.AddGrowableRow(1)
-        mainsizer.AddGrowableCol(0)
-        mainsizer.AddGrowableCol(1)
-
-        perimeter = wx.BoxSizer(wx.VERTICAL)  # This one is to have a border
-        perimeter.Add(
-            mainsizer, proportion=1, border=self.EXTERIOR_GAP,
-            flag=wx.EXPAND | wx.ALL)
-
+    def init_gui(self):
+        # Generic stuff about the window
         self.SetIcon(wx.Icon('app.png', wx.BITMAP_TYPE_PNG, 32, 32))
         self.SetBackgroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_FRAMEBK))
-        self.init_menu()
-        self.init_statusbar()
-        self.SetSizerAndFit(perimeter)
+        self.Bind(wx.EVT_CLOSE, self.on_close)
 
-    def init_transaction_panel(self):
-        buttonrow = wx.BoxSizer(wx.HORIZONTAL)
-        self.lbl_transaction_count = wx.StaticText(self, label="# items")
-        self.lbl_transaction_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(
-            self.lbl_transaction_count, proportion=1, border=5,
-            flag=wx.ALIGN_BOTTOM | wx.LEFT)   # Expand to fill remaining space
-        buttonrow.AddSpacer(self.GAP)
-        b = wx.Button(self, label="Add")
-        b.Bind(wx.EVT_BUTTON, self.add_transaction)
-        buttonrow.Add(b, flag=wx.EXPAND)
-        buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Edit"), flag=wx.EXPAND)
-        buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Delete"), flag=wx.EXPAND)
-
-        sizer = wx.StaticBoxSizer(wx.VERTICAL, self, "Transactions:")
-        sizer.Add(buttonrow, flag=wx.EXPAND)
-        sizer.AddSpacer(self.GAP)
-        self.lst_transactions = wx.ListCtrl(
-            self,
-            style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
-        self.lst_transactions.InsertColumn(0, 'Date (utc)', width=150)
-        self.lst_transactions.InsertColumn(1, 'Date (local)', width=150)
-        self.lst_transactions.InsertColumn(2, 'Type', width=150)
-        self.lst_transactions.InsertColumn(3, 'Wallets involved', width=280)
-        self.lst_transactions.InsertColumn(4, 'Explanation of money movement', width=500)
-        self.lst_transactions.InsertColumn(5, 'Notes', width=500)
-        self.lst_transactions.SetMinSize(wx.Size(-1, 200))
-        sizer.Add(self.lst_transactions, proportion=1, flag=wx.EXPAND)
-        return sizer
-
-    def init_wallet_panel(self):
-        buttonrow = wx.BoxSizer(wx.HORIZONTAL)
-        self.lbl_wallet_count = wx.StaticText(self, label="# items")
-        self.lbl_wallet_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(
-            self.lbl_wallet_count, proportion=1, border=5,
-            flag=wx.ALIGN_BOTTOM | wx.LEFT)   # Expand to fill remaining space
-        buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
-        buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Edit"), flag=wx.EXPAND)
-        buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Delete"), flag=wx.EXPAND)
-
-        sizer = wx.StaticBoxSizer(wx.VERTICAL, self, "Wallets:")
-        sizer.Add(buttonrow, flag=wx.EXPAND)
-        sizer.AddSpacer(self.GAP)
-        self.lst_wallets = wx.ListBox(self)
-        self.lst_wallets.SetMinSize(wx.Size(-1, 200))
-        sizer.Add(self.lst_wallets, proportion=1, flag=wx.EXPAND)
-        return sizer
-
-    def init_currency_panel(self):
-        buttonrow = wx.BoxSizer(wx.HORIZONTAL)
-        self.lbl_currency_count = wx.StaticText(self, label="# items")
-        self.lbl_currency_count.SetMinSize(wx.Size(70, -1))
-        buttonrow.Add(
-            self.lbl_currency_count, proportion=1, border=5,
-            flag=wx.ALIGN_BOTTOM | wx.LEFT)   # Expand to fill remaining space
-        buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Add"), flag=wx.EXPAND)
-        buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Edit"), flag=wx.EXPAND)
-        buttonrow.AddSpacer(self.GAP)
-        buttonrow.Add(wx.Button(self, label="Delete"), flag=wx.EXPAND)
-
-        sizer = wx.StaticBoxSizer(wx.VERTICAL, self, "Currencies:")
-        sizer.Add(buttonrow, flag=wx.EXPAND)
-        sizer.AddSpacer(self.GAP)
-        self.lst_currencies = wx.ListBox(self)
-        self.lst_currencies.SetMinSize(wx.Size(-1, 200))
-        sizer.Add(self.lst_currencies, proportion=1, flag=wx.EXPAND)
-        return sizer
-
-    def init_menu(self):
-        menuBar = wx.MenuBar()
-
-        menu = wx.Menu()
-        m_exit = menu.Append(wx.ID_EXIT, "E&xit\tAlt-X", "Close window and exit program.")
-        menuBar.Append(menu, "&File")
-
-        menu = wx.Menu()
-        m_about = menu.Append(wx.ID_ABOUT, "&About", "Information about this program")
-        menuBar.Append(menu, "&Help")
-
-        self.SetMenuBar(menuBar)
-
-    def init_statusbar(self):
+        # Status bar
         self.status_bar = self.CreateStatusBar(number=4, style=wx.STB_SIZEGRIP)
+
+        # Main area with a border
+        with Wrapper(wx.BoxSizer(wx.VERTICAL)) as perimeter:
+            with Wrapper(wx.GridBagSizer(vgap=self.GAP, hgap=self.GAP)) as mainsizer:
+                ####################################################################################
+                # Transactions
+                ####################################################################################
+                with Wrapper(wx.StaticBoxSizer(wx.VERTICAL, self, "Transactions:")) as sizer:
+                    with Wrapper(wx.BoxSizer(wx.HORIZONTAL)) as buttonrow:
+                        self.lbl_transaction_count = wx.StaticText(self)
+                        self.lbl_transaction_count.SetMinSize(wx.Size(70, -1))
+                        buttonrow.Add(self.lbl_transaction_count, proportion=1, flag=wx.ALIGN_BOTTOM | wx.LEFT, border=5)
+
+                        buttonrow.AddSpacer(self.GAP)
+
+                        b = wx.Button(self, label="Add")
+                        b.Bind(wx.EVT_BUTTON, self.add_transaction)
+                        buttonrow.Add(b, flag=wx.EXPAND)
+
+                        buttonrow.AddSpacer(self.GAP)
+
+                        buttonrow.Add(wx.Button(self, label="Edit"), flag=wx.EXPAND)
+
+                        buttonrow.AddSpacer(self.GAP)
+
+                        buttonrow.Add(wx.Button(self, label="Delete"), flag=wx.EXPAND)
+
+                        buttonrow.AddSpacer(self.GAP * 4)
+
+                        b = wx.Button(self, label="Refresh")
+                        b.Bind(wx.EVT_BUTTON, self.populate_transaction_list)
+                        buttonrow.Add(b, flag=wx.EXPAND)
+                    sizer.Add(buttonrow, flag=wx.EXPAND)
+
+                    sizer.AddSpacer(self.GAP)
+
+                    self.lst_transactions = CustomListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
+                    self.lst_transactions.bulk_add_columns('Date (utc)', 'Date (local)', 'Type', 'Wallets involved', 'Explanation of money movement', 'Notes')
+                    sizer.Add(self.lst_transactions, proportion=1, flag=wx.EXPAND)
+                mainsizer.Add(sizer, pos=(0, 0), span=(1, 2), flag=wx.EXPAND)
+
+                ####################################################################################
+                # Wallets
+                ####################################################################################
+                with Wrapper(wx.StaticBoxSizer(wx.VERTICAL, self, "Wallets:")) as sizer:
+                    with Wrapper(wx.BoxSizer(wx.HORIZONTAL)) as buttonrow:
+                        self.lbl_wallet_count = wx.StaticText(self)
+                        self.lbl_wallet_count.SetMinSize(wx.Size(70, -1))
+                        buttonrow.Add(self.lbl_wallet_count, proportion=1, flag=wx.ALIGN_BOTTOM | wx.LEFT, border=5)
+
+                        buttonrow.AddSpacer(self.GAP)
+
+                        b = wx.Button(self, label="Refresh")
+                        b.Bind(wx.EVT_BUTTON, self.populate_wallet_list)
+                        buttonrow.Add(b, flag=wx.EXPAND)
+                    sizer.Add(buttonrow, flag=wx.EXPAND)
+
+                    sizer.AddSpacer(self.GAP)
+
+                    self.lst_wallets = CustomListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
+                    self.lst_wallets.bulk_add_columns('Description', 'Level of trust')
+                    sizer.Add(self.lst_wallets, proportion=1, flag=wx.EXPAND)
+                mainsizer.Add(sizer, pos=(1, 0), flag=wx.EXPAND)
+
+                ####################################################################################
+                # Currencies
+                ####################################################################################
+                with Wrapper(wx.StaticBoxSizer(wx.VERTICAL, self, "Currencies:")) as sizer:
+                    with Wrapper(wx.BoxSizer(wx.HORIZONTAL)) as buttonrow:
+                        self.lbl_currency_count = wx.StaticText(self)
+                        self.lbl_currency_count.SetMinSize(wx.Size(70, -1))
+                        buttonrow.Add(self.lbl_currency_count, proportion=1, flag=wx.ALIGN_BOTTOM | wx.LEFT, border=5)
+
+                        buttonrow.AddSpacer(self.GAP)
+
+                        b = wx.Button(self, label="Refresh")
+                        b.Bind(wx.EVT_BUTTON, self.populate_currency_list)
+                        buttonrow.Add(b, flag=wx.EXPAND)
+                    sizer.Add(buttonrow, flag=wx.EXPAND)
+
+                    sizer.AddSpacer(self.GAP)
+
+                    self.lst_currencies = CustomListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
+                    self.lst_currencies.bulk_add_columns('Symbol', 'Name', 'Derivation path', 'Notes')
+                    sizer.Add(self.lst_currencies, proportion=1, flag=wx.EXPAND)
+                mainsizer.Add(sizer, pos=(1, 1), flag=wx.EXPAND)
+
+                mainsizer.AddGrowableRow(0)
+                mainsizer.AddGrowableRow(1)
+                mainsizer.AddGrowableCol(0)
+                mainsizer.AddGrowableCol(1)
+            perimeter.Add(mainsizer, proportion=1, flag=wx.EXPAND | wx.ALL, border=self.EXTERIOR_GAP)
+        self.SetSizerAndFit(perimeter)
 
     # ======================================================================= #
 
     def update_status(self, status):
-        if DEBUG:
+        if Config.DEBUG:
             print_flush(status)
         self.status_bar.SetStatusText(status, 0)
 
@@ -202,12 +181,8 @@ class MainWindow(wx.Frame):
         self.update_status("Connecting to database...")
 
         if Config.DB_TYPE == 'sqlite':
-            DB.initialize(SqliteDatabase(
-                Config.DB_NAME
-            ))
-            DB.create_tables(
-                ALL_TABLES,
-                safe=True)
+            DB.initialize(SqliteDatabase(Config.DB_NAME))
+            DB.create_tables(ALL_TABLES, safe=True)
         elif Config.DB_TYPE == 'mysql':
             DB.initialize(MySQLDatabase(
                 Config.DB_NAME,
@@ -215,12 +190,9 @@ class MainWindow(wx.Frame):
                 user=Config.DB_USER,
                 password=Config.DB_PASSWORD
             ))
-            # DB.create_tables(
-            #     ALL_TABLES,
-            #     safe=True)
+            DB.create_tables(ALL_TABLES, safe=True)
         else:
             raise Exception("Invalid DB_TYPE")
-        # DB.connect()
 
         if False:
             from starter_data import add_starter_data
@@ -229,7 +201,7 @@ class MainWindow(wx.Frame):
         self.database_connected = True
         self.ready_status()
 
-    def populate_transaction_list(self):
+    def populate_transaction_list(self, event=None):
         self.update_status("Updating transactions...")
 
         # Hard-coded colors for various transaction types
@@ -294,25 +266,92 @@ class MainWindow(wx.Frame):
                 money_explanation,
                 notes,
             ))
+            self.lst_transactions.SetItemData(new_index, t.id)
             if clr:
                 self.lst_transactions.SetItemBackgroundColour(new_index, clr)
-
             item_count += 1
 
         # Scroll to the bottom
         if new_index:
             self.lst_transactions.EnsureVisible(new_index)
+            self.lst_transactions.SetItemState(new_index, wx.LIST_STATE_FOCUSED, wx.LIST_STATE_FOCUSED)
+
+        # Autosize all the columns
+        self.lst_transactions.autosize_all_columns()
 
         # Update the label
         self.lbl_transaction_count.SetLabel("%s transactions" % item_count)
 
         self.ready_status()
 
-    def populate_wallet_list(self):
-        pass
+    def populate_wallet_list(self, event=None):
+        self.update_status("Updating wallets...")
 
-    def populate_currency_list(self):
-        pass
+        # Query the database (come back to this later to make the queries more efficient)
+        wallets = prefetch(
+            # Main table to load:
+            Wallet.select(),
+            # Additional tables to prefetch:
+            Currency.select(),
+            DeterministicSeed.select(),
+            Identity.select()
+        )
+
+        # Initialize the listbox
+        self.lst_wallets.DeleteAllItems()
+        item_count = 0
+
+        for w in wallets:
+            # Add the item to the listbox
+            new_index = self.lst_wallets.Append((
+                w.str_long(),
+                w.seed.level_of_trust,
+            ))
+            self.lst_wallets.SetItemData(new_index, w.id)
+            item_count += 1
+
+        # def fs(item1, item2):
+        #     print(item1, item2)
+        #     return (item1 > item2) - (item1 < item2)
+
+        # self.lst_wallets.SortItems(fs)
+
+        # Autosize all the columns
+        self.lst_wallets.autosize_all_columns()
+
+        # Update the label
+        self.lbl_wallet_count.SetLabel("%s wallets" % item_count)
+
+        self.ready_status()
+
+    def populate_currency_list(self, event=None):
+        self.update_status("Updating currencies...")
+
+        # Query the database (come back to this later to make the queries more efficient)
+        currencies = Currency.select().order_by(Currency.name)
+
+        # Initialize the listbox
+        self.lst_currencies.DeleteAllItems()
+        item_count = 0
+
+        for c in currencies:
+            # Add the item to the listbox
+            new_index = self.lst_currencies.Append((
+                c.symbol,
+                c.name,
+                c.derivation_path,
+                c.notes,
+            ))
+            self.lst_currencies.SetItemData(new_index, c.id)
+            item_count += 1
+
+        # Autosize all the columns
+        self.lst_currencies.autosize_all_columns()
+
+        # Update the label
+        self.lbl_currency_count.SetLabel("%s currencies" % item_count)
+
+        self.ready_status()
 
     def add_transaction(self, event):
         self.update_status("Button clicked")
@@ -328,19 +367,3 @@ class MainWindow(wx.Frame):
             self.sub_windows.remove(window)
         else:
             window.Show(True)
-
-
-if __name__ == "__main__":
-    # Configure logging
-    for arg in sys.argv:
-        if arg.lower() == '-v':
-            DEBUG = True
-    logging.basicConfig(
-        format='%(asctime)s %(levelname)s - %(message)s',
-        level=logging.DEBUG if DEBUG else logging.WARNING
-    )
-
-    app = wx.App()
-    # app = wx.App(redirect=True)   # Error messages go to popup window
-    form = MainWindow()
-    app.MainLoop()

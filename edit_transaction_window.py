@@ -3,6 +3,7 @@ import wx
 
 # Our stuff
 from database import *
+from common import *
 
 
 # class DateValidator(wx.Validator):
@@ -37,74 +38,80 @@ class EditTransactionWindow(wx.Dialog):
         super().__init__(parent=parent, title=title, size=wx.Size(1000, 1000),
                          style=wx.CAPTION | wx.CLOSE_BOX | wx.RESIZE_BORDER)
 
-        self.init_widgets()
+        self.wallet_combos = []
+        self.init_gui()
 
-    def init_widgets(self):
-        perimeter = wx.BoxSizer(wx.VERTICAL)
+    def init_gui(self):
+        with Wrapper(wx.BoxSizer(wx.VERTICAL)) as perimeter:
+            # Main area
+            with Wrapper(wx.FlexGridSizer(cols=2, vgap=self.GAP, hgap=self.GAP)) as mainarea:
+                mainarea.AddGrowableCol(0, proportion=0)
+                mainarea.AddGrowableCol(1, proportion=1)
 
-        # Main area
-        controlsizer = wx.FlexGridSizer(cols=2, vgap=self.GAP, hgap=self.GAP)
-        controlsizer.AddGrowableCol(0, proportion=0)
-        controlsizer.AddGrowableCol(1, proportion=1)
+                # Top row
+                mainarea.Add(wx.StaticText(self, label='Date (UTC):'))
+                with Wrapper(wx.BoxSizer(wx.HORIZONTAL)) as s:
+                    s.Add(wx.TextCtrl(self), proportion=0.5, flag=wx.EXPAND)
 
-        controlsizer.Add(wx.StaticText(self, label='Date (UTC):'))
-        s = wx.BoxSizer(wx.HORIZONTAL)
-        s.Add(wx.TextCtrl(self), proportion=0.5, flag=wx.EXPAND)
-        s.Add(wx.StaticText(self, label='Date (local):'), proportion=0.5, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.TextCtrl(self), proportion=0.5, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.StaticText(self, label='Type:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        self.cb_trans_type = wx.ComboBox(self, style=wx.CB_READONLY, choices=Transaction.all_trans_types)
-        s.Add(self.cb_trans_type, proportion=1, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        controlsizer.Add(s, flag=wx.EXPAND)
+                    s.Add(wx.StaticText(self, label='Date (local):'), proportion=0.5, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
 
-        controlsizer.Add(wx.StaticText(self, label='Notes:'))
-        controlsizer.Add(wx.TextCtrl(self), flag=wx.EXPAND)
+                    s.Add(wx.TextCtrl(self), proportion=0.5, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
 
-        controlsizer.Add(wx.StaticText(self, label='From wallet:'))
-        s = wx.BoxSizer(wx.HORIZONTAL)
-        self.cb_wallet_from = wx.ComboBox(self, style=wx.CB_READONLY)
-        s.Add(self.cb_wallet_from, flag=wx.EXPAND)
-        s.Add(wx.StaticText(self, label='Amount:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.TextCtrl(self), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.StaticText(self, label='Tx ID:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.TextCtrl(self), proportion=1, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        controlsizer.Add(s, flag=wx.EXPAND)
+                    s.Add(wx.StaticText(self, label='Type:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
 
-        controlsizer.Add(wx.StaticText(self, label='To wallet:'))
-        s = wx.BoxSizer(wx.HORIZONTAL)
-        self.cb_wallet_to = wx.ComboBox(self, style=wx.CB_READONLY)
-        s.Add(self.cb_wallet_to, flag=wx.EXPAND)
-        s.Add(wx.StaticText(self, label='Amount:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.TextCtrl(self), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.StaticText(self, label='Tx ID:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.TextCtrl(self), proportion=1, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        controlsizer.Add(s, flag=wx.EXPAND)
+                    self.cb_trans_type = wx.ComboBox(self, style=wx.CB_READONLY, choices=Transaction.all_trans_types)
+                    s.Add(self.cb_trans_type, proportion=1, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
+                mainarea.Add(s, flag=wx.EXPAND)
 
-        controlsizer.Add(wx.StaticText(self, label='Fee wallet:'))
-        s = wx.BoxSizer(wx.HORIZONTAL)
-        self.cb_wallet_fee = wx.ComboBox(self, style=wx.CB_READONLY)
-        s.Add(self.cb_wallet_fee, flag=wx.EXPAND)
-        s.Add(wx.StaticText(self, label='Amount:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.TextCtrl(self), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.StaticText(self, label='Tx ID:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        s.Add(wx.TextCtrl(self), proportion=1, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
-        controlsizer.Add(s, flag=wx.EXPAND)
+                # Inputs/outputs
+                subitems = ['From wallet:', 'To wallet:', 'Fee wallet:']
+                for subitem in subitems:
+                    mainarea.Add(wx.StaticText(self, label=subitem))
 
-        self.populate_wallet_lists()
+                    with Wrapper(wx.BoxSizer(wx.HORIZONTAL)) as s:
+                        cb = wx.ComboBox(self, style=wx.CB_READONLY)
+                        cb.Bind(wx.EVT_COMBOBOX, self.choose_wallet, id=0)
+                        s.Add(cb, flag=wx.EXPAND)
+                        self.wallet_combos.append(cb)
 
-        perimeter.Add(controlsizer, proportion=1, flag=wx.ALL | wx.EXPAND, border=self.GAP)
+                        s.Add(wx.StaticText(self, label='Amount:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
 
-        # Button row
-        buttonrow = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
-        perimeter.Add(buttonrow, proportion=0, flag=wx.ALL | wx.EXPAND, border=self.EXTERIOR_GAP)
+                        s.Add(wx.TextCtrl(self), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
 
+                        s.Add(wx.StaticText(self, label='Tx ID:'), flag=wx.EXPAND | wx.LEFT, border=self.GAP)
+
+                        s.Add(wx.TextCtrl(self), proportion=1, flag=wx.EXPAND | wx.LEFT, border=self.GAP)
+                    mainarea.Add(s, flag=wx.EXPAND)
+
+                # Populate all the combo boxes in one step
+                self.populate_wallet_lists()
+
+                # Notes row
+                mainarea.Add(wx.StaticText(self, label='Notes:'))
+                mainarea.Add(wx.TextCtrl(self), flag=wx.EXPAND)
+            perimeter.Add(mainarea, proportion=1, flag=wx.EXPAND | wx.ALL, border=self.GAP)
+
+            # Button row
+            buttonrow = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
+            perimeter.Add(buttonrow, proportion=0, flag=wx.EXPAND | wx.ALL, border=self.EXTERIOR_GAP)
         self.SetSizerAndFit(perimeter)
 
+    def choose_wallet(self, id):
+        # chosen_wallet[id] =
+        msg("")
+
     def populate_wallet_lists(self):
-        cb_list = [self.cb_wallet_from, self.cb_wallet_to, self.cb_wallet_fee]
-        for w in Wallet.select().order_by(Wallet.name.asc()):
-            for cb in cb_list:
-                cb.Append(w.name)
+        wallets = list(prefetch(
+            # Main table to load:
+            Wallet.select(),
+            # Additional tables to prefetch:
+            Currency.select(),
+            DeterministicSeed.select(),
+            Identity.select()
+        ))
+        for w in wallets:
+            for cb in self.wallet_combos:
+                new_indox = cb.Append(w.str_long())
 
     def OnClose(self, e):
         self.Destroy()

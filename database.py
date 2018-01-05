@@ -15,13 +15,13 @@ class Currency(Model):
     class Meta:
         database = DB
 
+    symbol = CharField(max_length=20, null=False)
+
     name = CharField(max_length=50, null=False)
 
     derivation_path = CharField(max_length=100, null=True)
 
-    unit_large = CharField(max_length=20, null=False)
-
-    unit_small = CharField(max_length=20, null=False)
+    smallest_unit = CharField(max_length=20, null=False)
 
     digits_after_decimal = IntegerField(null=False)
 
@@ -43,12 +43,12 @@ class Currency(Model):
 
     def format_large(self, small_amount):
         fmt = "{} {:." + str(self.digits_after_decimal) + "f}"
-        return fmt.format(self.unit_large, small_amount / (10**self.digits_after_decimal))
+        return fmt.format(self.symbol, small_amount / (10**self.digits_after_decimal))
         # dsh -0.02460000
 
     def format_small(self, small_amount):
         fmt = "{} {:<3}"
-        return fmt.format(small_amount, self.unit_small)
+        return fmt.format(small_amount, self.smallest_unit)
         # -2460000 sat
 
     def __str__(self):
@@ -114,13 +114,17 @@ class Wallet(Model):
         return "Wallet #%s" % self.id
 
     def str_short(self):
-        return "#%s(%s)" % (self.id, self.currency.unit_large)
+        return "#%s(%s)" % (self.id, self.currency.symbol)
 
+    _str_long = None
     def str_long(self):
-        t = "%s > %s > %s (%s)" % (self.identity.name, self.seed.name, self.currency.unit_large, self.currency.name)
-        if self.passphrase:
-            t += (" > Pw%s" % self.passphrase)
-        return t
+        if self._str_long:
+            return self._str_long
+        else:
+            self._str_long = "%s > %s > %s (%s)" % (self.seed.identity.name, self.seed.name, self.currency.symbol, self.currency.name)
+            if self.passphrase:
+                self._str_long += (" > Pw%s" % self.passphrase)
+            return self._str_long
 
 
 class Transaction(Model):
@@ -164,33 +168,15 @@ class Transaction(Model):
         Wallet, related_name='transaction_from',
         null=True, on_update='CASCADE')
 
-    @property
-    def from_wallet_str(self):
-        if self.from_wallet:
-            return self.from_wallet.str_short()
-        return ""
-
     # to_wallet
     to_wallet = ForeignKeyField(
         Wallet, related_name='transaction_to',
         null=True, on_update='CASCADE')
 
-    @property
-    def to_wallet_str(self):
-        if self.to_wallet:
-            return self.to_wallet.str_short()
-        return ""
-
     # fee_wallet
     fee_wallet = ForeignKeyField(
         Wallet, related_name='transaction_fee',
         null=True, on_update='CASCADE')
-
-    @property
-    def fee_wallet_str(self):
-        if self.fee_wallet:
-            return self.fee_wallet.str_short()
-        return ""
 
     # from_amount
     from_amount = BigIntegerField(null=True)
