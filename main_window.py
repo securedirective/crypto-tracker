@@ -8,6 +8,7 @@ from peewee import MySQLDatabase, SqliteDatabase, prefetch
 from config import Config
 from common import *
 from database import *
+from edit_transaction_window import EditTransactionWindow
 
 
 class MainWindow(wx.Frame):
@@ -28,7 +29,7 @@ class MainWindow(wx.Frame):
         self.populate_currency_list()
 
         # self.Maximize()
-        self.SetSize(1950, 50, 1850, 1000)
+        self.SetSize(1950, 100, 1850, 1000)
         self.lst_transactions.SetFocus()
         self.Show()
 
@@ -111,6 +112,7 @@ class MainWindow(wx.Frame):
 
                     self.lst_transactions = CustomListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES)
                     self.lst_transactions.bulk_add_columns('Date (utc)', 'Date (local)', 'Type', 'Wallets involved', 'Explanation of money movement', 'Notes')
+                    self.lst_transactions.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.edit_transaction)
                     sizer.Add(self.lst_transactions, proportion=1, flag=wx.EXPAND)
                 mainsizer.Add(sizer, pos=(0, 0), span=(1, 2), flag=wx.EXPAND)
 
@@ -211,7 +213,7 @@ class MainWindow(wx.Frame):
         CLR_ERROR = wx.Colour(255, 0, 0)        # Bright red
 
         # Query the database (come back to this later to make the queries more efficient)
-        transactions = prefetch(
+        self.transaction_list = prefetch(
             # Main table to load:
             Transaction.select().order_by(Transaction.date),
             # Additional tables to prefetch:
@@ -226,7 +228,7 @@ class MainWindow(wx.Frame):
         new_index = None
         item_count = 0
 
-        for t in transactions:
+        for t in self.transaction_list:
             # Show error in notes field if a transaction doesn't validate
             clr = None
             wallet_explanation = "?"
@@ -288,7 +290,7 @@ class MainWindow(wx.Frame):
         self.update_status("Updating wallets...")
 
         # Query the database (come back to this later to make the queries more efficient)
-        wallets = prefetch(
+        self.wallet_list = prefetch(
             # Main table to load:
             Wallet.select(),
             # Additional tables to prefetch:
@@ -301,7 +303,7 @@ class MainWindow(wx.Frame):
         self.lst_wallets.DeleteAllItems()
         item_count = 0
 
-        for w in wallets:
+        for w in self.wallet_list:
             # Add the item to the listbox
             new_index = self.lst_wallets.Append((
                 w.str_long(),
@@ -328,13 +330,13 @@ class MainWindow(wx.Frame):
         self.update_status("Updating currencies...")
 
         # Query the database (come back to this later to make the queries more efficient)
-        currencies = Currency.select().order_by(Currency.name)
+        self.currency_list = Currency.select().order_by(Currency.name)
 
         # Initialize the listbox
         self.lst_currencies.DeleteAllItems()
         item_count = 0
 
-        for c in currencies:
+        for c in self.currency_list:
             # Add the item to the listbox
             new_index = self.lst_currencies.Append((
                 c.symbol,
@@ -353,10 +355,17 @@ class MainWindow(wx.Frame):
 
         self.ready_status()
 
+    def edit_transaction(self, event):
+        try:
+            t = Transaction.get(id=event.Item.GetData())
+        except Exception as e:
+            return False
+        self.show_sub_window(EditTransactionWindow(parent=self, wallet_list=self.wallet_list, instance=t), False)
+        self.ready_status()
+
     def add_transaction(self, event):
         self.update_status("Button clicked")
-        from edit_transaction_window import EditTransactionWindow
-        self.show_sub_window(EditTransactionWindow(parent=self), False)
+        self.show_sub_window(EditTransactionWindow(parent=self, wallet_list=self.wallet_list), False)
         self.ready_status()
 
     def show_sub_window(self, window, modal=True):

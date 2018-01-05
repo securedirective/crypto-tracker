@@ -1,3 +1,4 @@
+import sys
 import wx
 import wx.lib.mixins.listctrl as listctrlmixins
 
