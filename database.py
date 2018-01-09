@@ -106,6 +106,8 @@ class Wallet(Model):
         Currency,
         null=False, on_update='CASCADE')
 
+    derivation = CharField(max_length=100, null=True)
+
     passphrase = IntegerField(null=True)
 
     public_key = CharField(max_length=500, null=True)
